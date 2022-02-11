@@ -1,0 +1,86 @@
+# This example requires Lima v0.7.0 or later.
+images:
+- location: https://github.com/lima-vm/alpine-lima/releases/download/v0.2.6/alpine-lima-std-3.14.3-x86_64.iso
+  arch: "x86_64"
+  digest: "sha512:0f5f1947733b1ac426edf43909bba44cb7a948030701d25fa3661feadb13af26896d3ab962b1e8ba986e6ad2f8e3169a07a3f56f3ed47f090680f2b57b0427ae"
+- location: https://github.com/lima-vm/alpine-lima/releases/download/v0.2.6/alpine-lima-std-3.14.3-aarch64.iso
+  arch: "aarch64"
+  digest: "sha512:d29c48b7214a4752a96403f68a7740f4adc04517e1c4430d73fcfb57a82071911beeacd3aa3daaaab589c373f09bf5b25e4b71cd4784f7c6855b39e7798c087e"
+
+mounts:
+- location: "~"
+  writable: true
+- location: "/tmp/lima"
+  writable: true
+
+firmware:
+  legacyBIOS: true
+
+cpus: 2
+memory: "4GB"
+disk: "50GB"
+
+containerd:
+  system: false
+  user: false
+
+provision:
+
+- mode: system
+  script: |
+    #!/bin/sh
+    apk update
+    apk add docker nsd curl
+    rc-update add docker default
+    /etc/init.d/docker start
+    usermod -aG docker ahernandez
+
+    IP=$(ip route get 1 | awk '{print $NF;exit}')
+
+    tee /etc/nsd/nsd.conf <<EOF
+    server:
+            ip-address: ${IP}
+            port: 53
+            server-count: 1
+            ip4-only: yes
+            hide-version: yes
+            identity: ""
+            zonesdir: "/etc/nsd"
+    zone:
+            name: host.docker.internal
+            zonefile: host.docker.internal.zone
+    EOF
+
+    tee /etc/nsd/host.docker.internal.zone <<EOF
+    ;## host.docker.internal authoritative zone
+
+    \$ORIGIN host.docker.internal.
+    \$TTL 86400
+
+    @ IN SOA ns1.host.docker.internal. webmaster.host.docker.internal. (
+                    2011100501      ; serial
+                    28800           ; refresh
+                    7200            ; retry
+                    86400           ; expire
+                    86400           ; min TTL
+                    )
+
+                    NS              ns1.host.docker.internal.
+                    MX      10      mail.host.docker.internal.
+    lists           MX      10      mail.host.docker.internal.
+    @               IN      A       172.17.0.1
+    EOF
+
+    /etc/init.d/nsd start
+    rc-update add nsd
+
+    echo "nameserver ${IP}" >> /etc/resolv.conf
+
+    curl -sfL https://get.k3s.io | sh -
+    sleep 20
+    cp /etc/rancher/k3s/k3s.yaml /tmp/k3s.yml
+    chmod +rwx+rwx+rwx /tmp/k3s.yml
+portForwards:
+- guestSocket: "/var/run/docker.sock"
+  hostSocket: "{{.Dir}}/docker.sock"
+

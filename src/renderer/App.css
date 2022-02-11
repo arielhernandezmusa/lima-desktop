@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.btn {
+  @apply flex flex-row;
+  @apply justify-center items-center;
+  @apply pt-1 pb-1 pr-2 pl-2;
+  @apply ml-1 mr-1;
+  @apply text-sm h-full;
+}
+
+h1 {
+  @apply text-2xl
+}
